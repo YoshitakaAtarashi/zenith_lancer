@@ -1,12 +1,20 @@
 # ZENITH LANCER
 
+日本語: [README.ja.md](README.ja.md)
+
 A horizontal shooting game for the browser: six stages, six bosses, a
 capsule power-up gauge, options that follow the ship, an AUTO PLAY pilot,
 an attract demo and a second loop.
 
-Open `index.html` in a browser. Nothing to install or build, and no server
-needed (it runs from `file://` too). Click or press a key once to start the
-sound.
+**▶ [Play now](https://yoshitakaatarashi.github.io/zenith_lancer/)**
+
+![Title](images/title.png)
+
+![Stage 1](images/stage1.png)
+
+![The last boss](images/boss.png)
+
+---
 
 ## Controls
 
@@ -19,18 +27,44 @@ sound.
 | C (while paused) | Back to the title |
 | M / F | Sound on/off / fullscreen |
 
-Gamepads (standard layout) and touch screens work too. The high score and
-the options are kept in the browser.
+Gamepads (standard layout) and touch screens work too. Click or press a key
+once to start the sound. The high score and the options are kept in the
+browser.
 
 ## Power-ups
 
-Red capsules (from flashing carriers and from wiping out a formation)
-move the lit slot of the gauge; X takes it: SPEED, MISSL (missiles that
-crawl along the ground), DOUBL (an upward shot), LASER (a piercing beam),
-OPTN (a helper that copies your shots, up to four), FORCE (a barrier in
-front). Every ninth capsule is blue and destroys everything on screen.
+Red capsules come from flashing carriers and from wiping out a whole
+formation. Each one moves the lit slot of the gauge along, and X takes it:
 
-## Options
+| Slot | |
+|---|---|
+| SPEED | Faster ship (5 steps) |
+| MISSL | Missiles that crawl along the ground |
+| DOUBL | An extra shot upward |
+| LASER | A beam that pierces |
+| OPTN | A helper that follows you and copies your shots (up to 4) |
+| FORCE | A barrier in front of the ship |
+
+Every ninth capsule is blue and destroys everything on screen. A lost ship
+loses its power-ups, but two red capsules drift in to help the next one.
+
+## Stages
+
+| # | Stage | Boss |
+|---|---|---|
+| 1 | Basalt Reach | Basalt Warden |
+| 2 | Glacier Veil | Cryo Sentinel |
+| 3 | Hive Nebula | Mother Cell |
+| 4 | Sunken Archive | Abyssal Leviathan |
+| 5 | Iron Citadel | Bastion Core |
+| 6 | Zenith Gate | The Zenith |
+
+After the last boss the game goes round again, harder.
+
+## Menu and options
+
+The title menu has GAME START, AUTO PLAY (the ship flies itself),
+OPTIONS and MUSIC MODE (all 12 songs). Left alone, the title plays a demo.
 
 | Option | |
 |---|---|
@@ -38,11 +72,18 @@ front). Every ninth capsule is blue and destroys everything on screen.
 | INVINCIBLE: OFF / ON | Nothing can hit the ship (no high score) |
 | START STAGE: 1-6 | The stage a new game starts on |
 
+## Running it locally
+
+Open `index.html` in a browser. Nothing to install or build, and no server
+needed (it runs from `file://` too).
+
 ## Code
 
-Plain JavaScript, no dependencies: `js/display.js` draws the tile planes
-and sprites into a canvas, `js/system.js` has the engine services, the
-game itself is the other files in `js/`. The music is in `music/`, the
-graphics and stage data in `data/assets.js`.
+Plain JavaScript, no dependencies. `js/display.js` draws the tile planes
+and the sprites into a canvas, `js/system.js` has the engine services
+(uploads, scrolling, palettes and fades, input, saving, the frame clock),
+and the game itself is the other files in `js/`. The music is in `music/`
+(Opus, with MP3 for browsers without it), the graphics and stage data in
+`data/assets.js`.
 
 (C) 2026 Y.ATARASHI
