@@ -25,12 +25,24 @@ function audio_unlock()
         A.sfxGain.gain.value = 1.0;
         A.sfxGain.connect(A.master);
         applyVolume();
-        sfxSetup();
+        try { sfxSetup(); } catch (e) { console.warn(e); }   // (the music plays on without them)
         // a song asked for before the sound could start
         if (cur.id !== MUS_NONE) startSong(cur.id, cur.serial);
         preloadAll();
     }
-    if (A.ctx.state === 'suspended') A.ctx.resume();
+    if (A.ctx.state !== 'running')
+    {
+        // (iOS: a sound started in the gesture wakes the output for good)
+        try
+        {
+            const b = A.ctx.createBufferSource();
+            b.buffer = A.ctx.createBuffer(1, 1, A.ctx.sampleRate);
+            b.connect(A.ctx.destination);
+            b.start(0);
+        }
+        catch (e) { }
+        if (A.ctx.resume) A.ctx.resume().catch(() => { });
+    }
 }
 
 function applyVolume()
@@ -50,22 +62,26 @@ function pickCodec()
 
 function key(id) { return (id < 10 ? '0' : '') + id; }
 
-// the songs are scripts (base64), so the game also runs from file://
-function loadSong(id)
+// The songs are scripts (base64), so the game also runs from file://.
+// They are kept as they come (compressed) and decoded only when wanted, two
+// at most at a time: twelve decoded songs take some 400 MB, more than an
+// iPhone gives a page, and its decoding then fails without a sound.
+const MAX_DECODED = 2;
+const raw = {}, fetching = {};
+let lru = [];               // decoded songs, the most recently used last
+
+function fetchSong(id)
 {
-    if (A.buffers[id]) return Promise.resolve(A.buffers[id]);
-    if (A.loading[id]) return A.loading[id];
+    if (raw[id]) return Promise.resolve(raw[id]);
+    if (fetching[id]) return fetching[id];
     const name = key(id) + '.' + pickCodec();
-    A.loading[id] = new Promise((resolve, reject) => {
+    fetching[id] = new Promise((resolve, reject) => {
         const done = () => {
             const b64 = window.MUSIC_DATA && window.MUSIC_DATA[name];
             if (!b64) { reject(new Error('no ' + name)); return; }
-            const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+            raw[id] = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
             delete window.MUSIC_DATA[name];
-            A.ctx.decodeAudioData(bin.buffer).then((buf) => {
-                A.buffers[id] = buf;
-                resolve(buf);
-            }, reject);
+            resolve(raw[id]);
         };
         if (window.MUSIC_DATA && window.MUSIC_DATA[name]) { done(); return; }
         const s = document.createElement('script');
@@ -74,16 +90,55 @@ function loadSong(id)
         s.onerror = () => reject(new Error('load ' + name));
         document.head.appendChild(s);
     });
+    fetching[id].catch((e) => { console.warn(e); delete fetching[id]; });
+    return fetching[id];
+}
+
+function decodeAudio(bytes)
+{
+    // (the copy: decoding takes the buffer it is given; older Safari has
+    // only the callback form)
+    const ab = bytes.slice().buffer;
+    return new Promise((resolve, reject) => {
+        const p = A.ctx.decodeAudioData(ab, resolve, reject);
+        if (p && p.then) p.then(resolve, reject);
+    });
+}
+
+function loadSong(id)
+{
+    if (A.buffers[id])
+    {
+        lru = lru.filter((k) => k !== id);
+        lru.push(id);
+        return Promise.resolve(A.buffers[id]);
+    }
+    if (A.loading[id]) return A.loading[id];
+    A.loading[id] = fetchSong(id).then(decodeAudio).then((buf) => {
+        delete A.loading[id];
+        A.buffers[id] = buf;
+        lru = lru.filter((k) => k !== id);
+        lru.push(id);
+        // the oldest go (never the one playing)
+        while (lru.length > MAX_DECODED)
+        {
+            const k = lru.find((x) => x !== id && x !== cur.id);
+            if (k === undefined) break;
+            lru = lru.filter((x) => x !== k);
+            delete A.buffers[k];
+        }
+        return buf;
+    });
     A.loading[id].catch((e) => { console.warn(e); delete A.loading[id]; });
     return A.loading[id];
 }
 
 async function preloadAll()
 {
-    // the title's song first, then the rest in game order
+    // fetched ahead (compressed: a few MB in all), decoded when played
     for (let id = 1; id < MUS_COUNT; id++)
     {
-        try { await loadSong(id); } catch (e) { }
+        try { await fetchSong(id); } catch (e) { }
     }
 }
 
