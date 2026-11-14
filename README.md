@@ -50,14 +50,14 @@ loses its power-ups, but two red capsules drift in to help the next one.
 
 ## Stages
 
-| # | Stage | Boss |
-|---|---|---|
-| 1 | Basalt Reach | Basalt Warden |
-| 2 | Glacier Veil | Cryo Sentinel |
-| 3 | Hive Nebula | Mother Cell |
-| 4 | Sunken Archive | Abyssal Leviathan |
-| 5 | Iron Citadel | Bastion Core |
-| 6 | Zenith Gate | The Zenith |
+| # | Stage | Set piece | Boss |
+|---|---|---|---|
+| 1 | Basalt Reach | Erupting volcanoes, a dive through the cavern | Basalt Warden |
+| 2 | Glacier Veil | An ice storm that piles up on the frozen lake | Cryo Sentinel |
+| 3 | Hive Nebula | Walls that writhe and swing across the screen | Mother Cell |
+| 4 | Sunken Archive | Giant clams blowing geysers | Abyssal Leviathan |
+| 5 | Iron Citadel | A lift shaft, laser gates and rail laser cannons | Bastion Core |
+| 6 | Zenith Gate | Captive stars: loops of flame and lasers | The Zenith |
 
 After the last boss the game goes round again, harder.
 
@@ -83,7 +83,7 @@ Plain JavaScript, no dependencies. `js/display.js` draws the tile planes
 and the sprites into a canvas, `js/system.js` has the engine services
 (uploads, scrolling, palettes and fades, input, saving, the frame clock),
 and the game itself is the other files in `js/`. The music is in `music/`
-(Opus, with MP3 for browsers without it), the graphics and stage data in
-`data/assets.js`.
+(Opus, with MP3 for browsers without it) with the sound effects in
+`music/sfx.js`, the graphics and stage data in `data/assets.js`.
 
 (C) 2026 Y.ATARASHI

@@ -8,7 +8,9 @@ const GFX = {
     colors: new Uint16Array(64),
     hscroll: [new Int16Array(224), new Int16Array(224)],    // A, B: entry per line
     vscroll: [0, 0],
+    vscrollCol: [new Int16Array(20), new Int16Array(20)],   // A, B: per 16 px column (VSCROLL_COLUMN)
     hmode: 0,               // 0 plane, 2 tile (8-line rows), 3 line
+    vmode: 0,               // 0 plane, 1 column
     winRow: 32,             // first window row (32 = off)
     sat: new Uint16Array(80 * 4),       // y, size_link, attr, x
     shadow: false,
@@ -18,7 +20,7 @@ const GFX = {
 
 const BG_A = 0, BG_B = 1, WINDOW = 2;
 const HSCROLL_PLANE = 0, HSCROLL_TILE = 2, HSCROLL_LINE = 3;
-const VSCROLL_PLANE = 0;
+const VSCROLL_PLANE = 0, VSCROLL_COLUMN = 1;
 
 const COLOR_LEVELS = [0, 52, 87, 116, 144, 172, 206, 255];
 
@@ -69,16 +71,15 @@ function rgbOf(c, shade)
 const lbB = new Int16Array(320), lbA = new Int16Array(320), lbS = new Int16Array(320);
 const lpB = new Uint8Array(320), lpA = new Uint8Array(320), lpS = new Uint8Array(320);
 
-function drawPlaneLine(plane, y, buf, pri, hs, vs)
+function drawPlaneSpan(plane, y, buf, pri, hs, vs, x, xEnd)
 {
     const map = GFX.planes[plane];
     const tiles = GFX.tiles;
     const py = (y + vs) & 255;
     const row = (py >> 3) * 64;
     const ty = py & 7;
-    let x = 0;
-    let px = (-hs) & 511;
-    while (x < 320)
+    let px = (x - hs) & 511;
+    while (x < xEnd)
     {
         const cell = map[row + (px >> 3)];
         const idx = cell & 2047;
@@ -87,7 +88,7 @@ function drawPlaneLine(plane, y, buf, pri, hs, vs)
         const ry = (cell & 0x1000) ? 7 - ty : ty;
         const base = idx * 64 + ry * 8;
         const hf = cell & 0x0800;
-        for (let tx = px & 7; tx < 8 && x < 320; tx++, x++)
+        for (let tx = px & 7; tx < 8 && x < xEnd; tx++, x++)
         {
             const c = tiles[base + (hf ? 7 - tx : tx)];
             buf[x] = c ? pal | c : -1;
@@ -95,6 +96,14 @@ function drawPlaneLine(plane, y, buf, pri, hs, vs)
         }
         px = (px + 8 - (px & 7)) & 511;
     }
+}
+
+function drawPlaneLine(plane, y, buf, pri, hs, vs)
+{
+    if (GFX.vmode !== VSCROLL_COLUMN) { drawPlaneSpan(plane, y, buf, pri, hs, vs, 0, 320); return; }
+    // each 16 px screen column has its own vertical scroll
+    const vc = GFX.vscrollCol[plane];
+    for (let k = 0; k < 20; k++) drawPlaneSpan(plane, y, buf, pri, hs, vc[k], k * 16, k * 16 + 16);
 }
 
 function drawWindowLine(y, buf, pri)

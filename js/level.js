@@ -1,7 +1,7 @@
 // Runs the current stage's script (scripts.js).
 'use strict';
 
-const EV_WARNING = 0xF0, EV_BOSS = 0xF1, EV_SPEED = 0xF2, EV_WALL = 0xF3;
+const EV_WARNING = 0xF0, EV_BOSS = 0xF1, EV_SPEED = 0xF2, EV_WALL = 0xF3, EV_WAVE = 0xF4, EV_HEAT = 0xF5;
 
 // Ev: { col, type, count, y, flags, interval, param }
 //   y: air units: spawn height; volcano: rock interval; EV_SPEED: speed
@@ -17,6 +17,8 @@ const GND = (c, t, f) => EV(c, t, 1, 0, f | EF_GROUND, 0, 0);
 const GNDP = (c, t, f, p) => EV(c, t, 1, 0, f | EF_GROUND, 0, p);
 const EVT = (c, t, v) => EV(c, t, 1, v, 0, 0, 0);
 const FIX = (c, t, y) => EV(c, t, 1, y, EF_FIXEDY | EF_GROUND, 0, 0);
+// the Glacier's ice storm: n cubes from the top edge, one every iv frames
+const ICESTORM = (c, n, iv) => EV(c, EN_CUBE, n, 160, EF_TOP, iv, 0);
 const END_SCRIPT = EV(0xFFFF, 0, 0, 0, 0, 0, 0);
 
 (function () {
@@ -47,6 +49,7 @@ function level_reset(startCol)
     while (script[cursor].col < startCol && script[cursor].type !== EV_WARNING && script[cursor].type !== EV_BOSS)
     {
         if (script[cursor].type === EV_SPEED) scrollSpeed = scrollTarget = script[cursor].y;
+        if (script[cursor].type === EV_HEAT) stage_heat(script[cursor].y);
         cursor++;
     }
     for (let i = 0; i < MAX_PENDING; i++) pending[i].left = 0;
@@ -54,9 +57,22 @@ function level_reset(startCol)
 
 function spawnOne(ev, group, yoff)
 {
+    if (ev.flags & EF_TOP)
+    {
+        // a climb: in at the top edge, with the world (x is the script's y)
+        const e = enemy_spawn(ev.type, ev.y, -16, ev.flags | EF_GROUND);
+        if (e)
+        {
+            e.a = ev.param;
+            e.group = group;
+            if (ev.type === EN_MINI) e.vy = FP(2);
+        }
+        return;
+    }
     if (ev.flags & EF_FIXEDY)
     {
-        enemy_spawn(ev.type, SCREEN_W + 16, ev.y, ev.flags);
+        const e = enemy_spawn(ev.type, SCREEN_W + 16, ev.y, ev.flags);
+        if (e) e.a = ev.param;
         return;
     }
     if (ev.flags & EF_GROUND)
@@ -67,8 +83,11 @@ function spawnOne(ev, group, yoff)
         const g = ceil ? stage_ceilAt(wx) : stage_floorAt(wx);
         if (!ceil && g >= NO_FLOOR) return;
         if (ceil && g <= NO_CEIL) return;
-        const half = ev.type === EN_ICICLE ? 12 : ev.type === EN_SLED ? 6 : ev.type === EN_CANNON ? 12 : 8;
+        const half = ev.type === EN_ICICLE ? 12 : ev.type === EN_SLED ? 6 : ev.type === EN_CANNON ? 12 :
+                     ev.type === EN_CLAM ? 10 : 8;
         const e = enemy_spawn(ev.type, x, ceil ? g + half : g - half, ev.flags);
+        if (e && (ev.type === EN_GATE || ev.type === EN_LCANNON || ev.type === EN_FLARE || ev.type === EN_LANCE || ev.type === EN_CLAM))
+            e.a = ev.param;
         if (e && ev.type === EN_VOLCANO)
         {
             e.a = ev.y;
@@ -77,9 +96,18 @@ function spawnOne(ev, group, yoff)
         }
         return;
     }
+    // (kept inside the passage where it comes in: a stage's walls may swing)
+    let ay = ev.y + yoff;
+    if (sg_swings())
+    {
+        const wx = cameraX + SCREEN_W + 16;
+        const top = stage_ceilAt(wx) + 20, bot = stage_floorAt(wx) - 20;
+        if (ay < top) ay = top;
+        if (ay > bot) ay = bot;
+    }
     // an echo never carries a capsule
     const e = enemy_spawn(ev.type, ev.type === EN_LANCER ? SCREEN_W - 20 : SCREEN_W + 16,
-                          ev.y + yoff, yoff ? ev.flags & ~EF_CARRIER : ev.flags);
+                          ay, yoff ? ev.flags & ~EF_CARRIER : ev.flags);
     if (!e) return;
     e.group = group;
     if (ev.type === EN_FAN) e.b = ev.param;
@@ -87,7 +115,7 @@ function spawnOne(ev, group, yoff)
 
 function level_update()
 {
-    const col = cameraX >> 3;
+    const col = stageDist >> 3;
     while (script[cursor].col <= col)   // the end marker's column is never reached
     {
         const ev = script[cursor++];
@@ -111,6 +139,16 @@ function level_update()
             scrollTarget = ev.y;
             continue;
         }
+        if (ev.type === EV_HEAT)
+        {
+            stage_heat(ev.y);
+            continue;
+        }
+        if (ev.type === EV_WAVE)
+        {
+            stage_wave(ev.y);
+            continue;
+        }
         if (ev.type === EV_WALL)
         {
             // armour blocks stacked from roof to deck at the right edge
@@ -125,10 +163,10 @@ function level_update()
         // A strong ship meets more: formations grow, and lone flyers bring
         // a wingman at another height.
         const pw = player_power();
-        const air = !(ev.flags & (EF_GROUND | EF_FIXEDY)) && ev.type !== EN_LANCER;
+        const air = !(ev.flags & (EF_GROUND | EF_FIXEDY)) && ev.type !== EN_LANCER && ev.type !== EN_CUBE;
         let n = ev.count;
         if (air && n > 1 && pw >= 5) n += pw >= 8 ? 2 : 1;
-        const group = n > 1 ? enemy_newGroup(n) : 0;
+        const group = n > 1 && ev.type !== EN_CUBE ? enemy_newGroup(n) : 0;
         spawnOne(ev, group, 0);
         let echo = 0;
         if (air && n === 1 && pw >= 6) echo = ev.y < 104 ? 48 : -48;

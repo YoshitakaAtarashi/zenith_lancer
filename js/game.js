@@ -66,8 +66,8 @@ function respawn()
     player_init(false);
     if (had)
     {
-        capsule_drop(200, PX(pl.y) - 24, false);
-        capsule_drop(232, PX(pl.y) + 24, false);
+        capsule_dropToward(PX(pl.x), PX(pl.y), -1, 288);
+        capsule_dropToward(PX(pl.x), PX(pl.y), 1, 352);
     }
 }
 
@@ -76,6 +76,7 @@ function stageStart(keepPower)
     gfx_setEnable(false);
     stage_init(curStage, startColumn);
     video_loadStage(curStage);
+    pbeam_init();        // (no beams left from an earlier game patch the new columns)
     stage_drawInitial();
     gfx_setEnable(true);
     pal_fadeInAll(stage_gfx[curStage].pal, 24, true);
@@ -84,6 +85,7 @@ function stageStart(keepPower)
     ebullet_init();
     capsule_init();
     fx_init();
+    pbeam_init();
     boss_init();
     level_reset(startColumn);
     player_init(keepPower);
@@ -181,6 +183,7 @@ function game_update()
     player_update();
     enemy_update();
     boss_update();
+    pbeam_update();
     enemy_collideShots();
     ebullet_update();
     capsule_update();
@@ -287,6 +290,7 @@ function game_draw()
     capsule_draw();
     fx_draw();
     player_drawShots();
+    ebullet_drawPassed();
     spr_end();
 }
 

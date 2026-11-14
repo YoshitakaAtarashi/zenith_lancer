@@ -10,6 +10,7 @@ const u8 = (v) => v & 0xFF;
 const TRUE = true, FALSE = false;
 
 function divu(a, b) { return Math.floor((a >>> 0) / (b & 0xFFFF)) & 0xFFFF; }
+function divs(a, b) { return s16(Math.trunc(a / s16(b))); }
 function modu(a, b) { return ((a >>> 0) % (b & 0xFFFF)) & 0xFFFF; }
 function mul16u(a, b) { return ((a & 0xFFFF) * (b & 0xFFFF)) >>> 0; }
 function mul16s(a, b) { return s16(a) * s16(b); }
@@ -63,9 +64,15 @@ function gfx_fillTileMapRect(plane, value, x, y, w, h)
 }
 function gfx_clearTileMapRect(plane, x, y, w, h) { gfx_fillTileMapRect(plane, 0, x, y, w, h); }
 function gfx_clearPlane(plane, wait) { GFX.planes[plane].fill(0); }
-function gfx_setScrollingMode(h, v) { GFX.hmode = h; }
+function gfx_setScrollingMode(h, v) { GFX.hmode = h; GFX.vmode = v || 0; }
 function gfx_setVerticalScroll(plane, v) { GFX.vscroll[plane] = s16(v); GFX.pendingVScroll[plane] = null; }
 function gfx_setVerticalScrollVSync(plane, v) { GFX.pendingVScroll[plane] = s16(v); }
+// VSCROLL_COLUMN: one value per 16 px screen column
+function gfx_setVerticalScrollTile(plane, col, values, len, mode)
+{
+    const t = GFX.vscrollCol[plane];
+    for (let i = 0; i < len && col + i < 20; i++) t[col + i] = s16(values[i]);
+}
 function gfx_setHorizontalScrollTile(plane, tile, values, len, mode)
 {
     const t = GFX.hscroll[plane];

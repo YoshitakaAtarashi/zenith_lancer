@@ -55,6 +55,28 @@ function cannonDanger(x, y, dt)
     return (p >= 180 && p < 262 && x < boss.x + 40 && d < 18) ? 18 - d : 0;
 }
 
+// A plane laser that burns or is about to (pbeam.js), as a box round the
+// part of it nearest the ship: sets bnX, bnY (centre) and bnW, bnH (half
+// sizes) in px.
+let bnX = 0, bnY = 0, bnW = 0, bnH = 0;
+function beamNear(b, px, py)
+{
+    if (!b.used || b.state === PB_OFF) return false;
+    const bx = pbeam_screenBox(b);
+    const x0 = bx[0] - 3, y0 = bx[1] - 3, x1 = bx[2] + 3, y1 = bx[3] + 3;   // the box the beam will burn
+    if (b.vert)
+    {
+        bnX = (x0 + x1) >> 1; bnW = (((x1 - x0) >> 1) + 2) & 255;
+        bnY = py < y0 + 12 ? y0 + 12 : py > y1 - 12 ? y1 - 12 : py; bnH = 40;
+    }
+    else
+    {
+        bnY = (y0 + y1) >> 1; bnH = (((y1 - y0) >> 1) + 2) & 255;
+        bnX = px < x0 + 12 ? x0 + 12 : px > x1 - 12 ? x1 - 12 : px; bnW = 40;
+    }
+    return (abs(bnX - px) & 0xFFFF) < 90 && (abs(bnY - py) & 0xFFFF) < 90;
+}
+
 function add(x, y, vx, vy, hw, hh, w, k)
 {
     if (nn >= MAXN) return;
@@ -92,7 +114,25 @@ function addEnemy(e, hw, hh, w)
 
 function curved(e)
 {
-    return e.type == EN_WORM || e.type == EN_FISH || (e.flags & EF_GROUND) != 0;
+    return e.type == EN_WORM || e.type == EN_FISH;
+}
+
+// Small things a shot breaks (rocks, mini craft, cells, spores, flakes,
+// falling ice) coming down the ship's line of fire, still a way ahead: the
+// gun held down meets them first, so they are not worth a dodge -- the
+// bullets, which nothing stops, are.
+function shotDown(e, px, py)
+{
+    switch (e.type)
+    {
+    case EN_ROCK: case EN_MINI: case EN_CELL: case EN_SPORE: case EN_FLAKE: case EN_CUBE:
+        break;
+    default:
+        return false;
+    }
+    if (e.hp > 2 || (e.flags & EF_NOSHOT)) return false;
+    const dx = PX(e.x) - px, dy = PX(e.y) - py;
+    return dx > 28 && dx < 200 && dy > -e.hh - 2 && dy < e.hh + 2;
 }
 
 function nearShip(x, y, px, py, v)
@@ -119,6 +159,7 @@ let tx = 0, ty = 0;
 let bossOn = false;
 
 const gDts = [2, 4, 8, 12, 16];
+const gFx = new Int16Array(7), gFy = new Int16Array(7);
 const gWx = Array.from({ length: 6 }, () => new Int16Array(5));
 const gWy = Array.from({ length: 6 }, () => new Int16Array(5));
 
@@ -139,6 +180,18 @@ function gather(k)
         if (b.on && (abs(PX(b.y) - py) & 0xFFFF) < v)
             add(s16(b.x + FP(16)), b.y, b.vx, 0, 20 + k.margin, 4 + k.margin, 1000, k);
     }
+    // the Zenith's loops of flame: all of each loop that burns or will
+    // (the body, and the head's way on), fixed in the world, kept clear of
+    if (stageNum == 5)
+    {
+        const n = enemy_flareZone(px + 8, py, 56, gFx, gFy, 7);
+        for (let i = 0; i < n; i++)
+            add(FP(gFx[i]), FP(gFy[i]), -FP(scrollStep), 0, 13 + k.margin, 13 + k.margin, 1000, k);
+    }
+    // plane lasers: they move with the rock
+    for (let i = 0; i < MAX_PBEAMS && pbeamCount; i++)
+        if (beamNear(pbeams[i], px, py))
+            add(FP(bnX), FP(bnY), -FP(scrollStep), -FP(scrollStepY), bnW + k.margin, bnH + k.margin, 1000, k);
     // something to line up with: the nearest enemy ahead
     let bestAhead = 32767;
     ty = 104;
@@ -149,17 +202,37 @@ function gather(k)
         if (!e.type || !e.hw) continue;
         const ex = PX(e.x), ey = PX(e.y);
         if (!nearShip(ex, ey, px, py, v)) continue;
+        if (shotDown(e, px, py))
+        {
+            // keep it in the sights -- if it comes across, not down (lined
+            // up under falling things, the ship would follow them down)
+            if (e.type != EN_CUBE && e.vx < 0 && (abs(e.vy) & 0xFFFF) < ((-e.vx) & 0xFFFF)) { ty = ey; bestAhead = 0; }
+            continue;
+        }
         if (curved(e)) addEnemy(e, e.hw + 2 + k.room, e.hh + k.room, 800);
+        else if (e.flags & EF_GROUND)
+            add(e.x, e.y, s16(e.vx - FP(scrollStep)), s16(e.vy - FP(scrollStepY)), e.hw + 2 + k.room, e.hh + k.room, 800, k);
         else add(e.x, e.y, e.vx, e.vy, e.hw + 2 + k.room, e.hh + k.room, 800, k);
         // a fan yet to turn will sweep back right at the ship's height: wait
         // for it on the near side of its turning point
         if (e.type == EN_FAN && e.a < 2 && e.b > 48 && tx > e.b - 32) tx = s16(e.b - 32);
-        if (ex > px + 8 && ex - px < bestAhead && !(e.flags & EF_NOSHOT))
+        // (falling ice is no target: lined up under it, the ship would
+        // follow it down onto the lake)
+        if (ex > px + 8 && ex - px < bestAhead && !(e.flags & EF_NOSHOT) && e.type != EN_CUBE)
         {
             bestAhead = s16(ex - px);
             ty = ey;
         }
     }
+    // the Archive's clam geysers, gaping or blowing: a column to the roof
+    if (clamsAwake)
+        for (let i = 0; i < MAX_ENEMIES; i++)
+        {
+            const g = enemy_geyser(enemies[i]);
+            if (!g || (abs(g.x - px) & 0xFFFF) > v) continue;
+            const hh = ((g.y1 - g.y0) & 0xFFFF) >> 1;
+            add(FP(g.x), FP(g.y0 + hh), -FP(scrollStep), 0, 12 + k.margin, hh > 120 ? 120 : hh, 1000, k);
+        }
     // worm bodies, where the trail will take them
     if (stageNum == 2)
     {
@@ -185,13 +258,30 @@ function gather(k)
         if (tx > 96) tx = 96;
     }
     for (let i = 0; i < MAX_CAPS; i++)
-        if (caps[i].on && nearShip(PX(caps[i].x), PX(caps[i].y), px, py, v) &&
+        if (caps[i].on && (PX(caps[i].y) & 0xFFFF) < 224 && nearShip(PX(caps[i].x), PX(caps[i].y), px, py, v) &&
             !(bossOn && (stageNum == 3 ? PX(caps[i].x) > 120 : PX(caps[i].x) + 24 > bossBox[0])))
         {
             tx = PX(caps[i].x);
             ty = PX(caps[i].y);
             break;
         }
+    // a laser gate coming while it rests: through it now, or be pinned
+    // against the left edge when it burns (and in a climb, a barrier
+    // coming down: up through it)
+    for (let i = 0; i < MAX_PBEAMS && pbeamCount; i++)
+    {
+        const b = pbeams[i];
+        if (!b.used || b.state != PB_OFF) continue;
+        const bx = pbeam_screenBox(b);
+        const x0 = bx[0], y0 = bx[1], x1 = bx[2], y1 = bx[3];
+        if (b.vert && x0 > px - 8 && x0 < px + 110 && y0 < py && y1 > py)
+            tx = x1 + 36;
+        else if (!b.vert && scrollStepY < 0 && y1 < py + 8 && y1 > py - 100 && x0 < px && x1 > px)
+            ty = y0 - 28;
+    }
+    // Where the Hive's walls swing (the screen's left is shut, stage_leftLimit): not up
+    // against that edge, where there is only up and down left to dodge in.
+    if (colWave && sg_swings() && tx < stage_leftLimit() + 40) tx = stage_leftLimit() + 40;
     // stay inside the gap the terrain leaves a little ahead: a pillar seen
     // late cannot be climbed in time. The look reaches 20 frames of scroll
     // (80 px at the normal speed, 4 times that in a rush) and stops before
@@ -245,11 +335,12 @@ function decideStep(k, budget)
                 if (dirY[d] > 0) sy = s16(sy + sp); else if (dirY[d] < 0) sy = s16(sy - sp);
                 t++;
             }
-            if (sx < FP(16)) sx = FP(16);
+            if (sx < FP(stage_leftLimit())) sx = FP(stage_leftLimit());
             if (sx > FP(SCREEN_W - 24)) sx = FP(SCREEN_W - 24);
             if (sy < FP(8)) sy = FP(8);
             if (sy > FP(playBottom)) sy = FP(playBottom);
-            const x = PX(sx), y = PX(sy);
+            const x = PX(sx);
+            let y = PX(sy);
             const w = k.samples + 1 - s;    // sooner matters more
             const ax = nx[s], ay = ny[s];
             for (let j = 0; j < nn; j++)
@@ -268,6 +359,7 @@ function decideStep(k, budget)
             if (!stageOpen)
             {
                 const wx = (cameraX | 0) + mul16u(scrollStep, t);
+                y = s16(y + scrollStepY * t);
                 if (y + 4 >= stage_floorAt(wx + x + 13) || y - 4 < stage_ceilAt(wx + x + 13) ||
                     y + 4 >= stage_floorAt(wx + x - 10) || y - 4 < stage_ceilAt(wx + x - 10))
                     cost = (cost + mul16u(2000, w)) >>> 0;
@@ -428,7 +520,7 @@ function emX(s, sp, xi)
     let x = PX(pl.x);
     const off = s16(mul16s(sp, emT[s]) >> 4);
     x += xi > 0 ? off : xi < 0 ? -off : 0;
-    if (x < 16) x = 16;
+    if (x < stage_leftLimit()) x = stage_leftLimit();
     if (x > SCREEN_W - 24) x = SCREEN_W - 24;
     return x;
 }
@@ -438,11 +530,13 @@ function emTerrain(sp, xi)
     for (let s = 4 - EM_S; s < 5; s++)
     {
         const wx = (cameraX | 0) + emX(s, sp, xi) + mul16u(scrollStep, emT[s]);
-        let f = stage_floorAt(wx + 14) - 4, c = stage_ceilAt(wx + 14) + 4;
-        let f2 = stage_floorAt(wx + 2) - 5, c2 = stage_ceilAt(wx + 2) + 5;
+        // (a climbing camera moves the rock down the screen as it goes)
+        const vy = s16(scrollStepY * emT[s]);
+        let f = stage_floorAt(wx + 14) - 4 - vy, c = stage_ceilAt(wx + 14) + 4 - vy;
+        let f2 = stage_floorAt(wx + 2) - 5 - vy, c2 = stage_ceilAt(wx + 2) + 5 - vy;
         if (f2 < f) f = f2;
         if (c2 > c) c = c2;
-        f2 = stage_floorAt(wx - 10) - 5; c2 = stage_ceilAt(wx - 10) + 5;
+        f2 = stage_floorAt(wx - 10) - 5 - vy; c2 = stage_ceilAt(wx - 10) + 5 - vy;
         if (f2 < f) f = f2;
         if (c2 > c) c = c2;
         emF[s][xi + 1] = f;
@@ -556,6 +650,8 @@ const emDts = [1, 2, 4, 8];
 const emWx = Array.from({ length: 7 }, () => new Int16Array(5));
 const emWy = Array.from({ length: 7 }, () => new Int16Array(5));
 const emCosts = new Uint16Array(9);
+const emFx = new Int16Array(6), emFy = new Int16Array(6);
+let emSkip = false;
 
 function emergency()
 {
@@ -574,23 +670,42 @@ function emergency()
         if (b.on && (abs(PX(b.y) - py) & 0xFFFF) < 24 && PX(b.x) < px + 120)
             emAdd(s16(b.x + FP(16)), b.y, b.vx, 0, 22, 6);
     }
+    for (let i = 0; i < MAX_PBEAMS && pbeamCount; i++)
+        if (beamNear(pbeams[i], px, py))
+            emAdd(FP(bnX), FP(bnY), -FP(scrollStep), -FP(scrollStepY), bnW, bnH);
     for (let i = 0; i < MAX_ENEMIES; i++)
     {
         const e = enemies[i];
         if (!e.type || !e.hw) continue;
         const dx = PX(e.x) - px, dy = PX(e.y) - py;
-        if (dx > -48 && dx < 64 && dy > -48 && dy < 48)
+        if (dx > -48 && dx < 64 && dy > -48 && dy < 48 && !shotDown(e, px, py))
         {
             if (e.type == EN_FAN && e.a < 2) emAddFan(e, pl.y);
             else if (curved(e)) emAddEnemy(e, e.hw + 4, e.hh + 2);
+            else if (e.flags & EF_GROUND) emAdd(e.x, e.y, s16(e.vx - FP(scrollStep)), s16(e.vy - FP(scrollStepY)), e.hw + 4, e.hh + 2);
             else emAdd(e.x, e.y, e.vx, e.vy, e.hw + 4, e.hh + 2);
         }
     }
+    // clam geysers
+    if (clamsAwake)
+        for (let i = 0; i < MAX_ENEMIES; i++)
+        {
+            const g = enemy_geyser(enemies[i]);
+            if (!g || (abs(g.x - px) & 0xFFFF) > 64) continue;
+            const cy = py < g.y0 ? g.y0 : py > g.y1 ? g.y1 : py;      // the part of it nearest the ship
+            emAdd(FP(g.x), FP(cy), -FP(scrollStep), 0, 12, 10);
+        }
     // worm bodies: each segment goes where the head has been
     if (stageNum == 2)
     {
         const n = enemy_wormAhead(px + 12, py, 56, emDts, 4, emWx, emWy, 7);
         for (let i = 0; i < n; i++) emAddPath(emWx[i], emWy[i], 11, 9);
+    }
+    // the Zenith's star flares: each fireball where the arc takes it
+    if (stageNum == 5)
+    {
+        const n = enemy_flareZone(px + 8, py, 36, emFx, emFy, 6);
+        for (let i = 0; i < n; i++) emAdd(FP(emFx[i]), FP(emFy[i]), -FP(scrollStep), 0, 12, 12);
     }
     if (stageNum == 3 && boss.state == B_FIGHT)
     {
@@ -618,6 +733,19 @@ function emergency()
     let bst = move, bc = cost[move];
     for (let d = 0; d < 9 && bc; d++)
         if (cost[d] < bc) { bc = cost[d]; bst = d; }
+    // no way out in 8 frames (a slow ship in a wide beam): every way costs
+    // the same, and the old course, kept, can be into the screen's left
+    // edge -- going nowhere. Away, up or down, from what it is in the
+    // middle of (up in a climb): it gets out in time.
+    if (bc && bc >= cur && dirX[bst] <= 0 && dirY[bst] == 0 && px <= stage_leftLimit() + 24)
+    {
+        let side = 0;
+        for (let j = 0; j < en_; j++)
+            side += ey_[3][j] < py ? 1 : -1;
+        const v = side >= 0 && scrollStepY >= 0 ? 4 : 3;   // down : up
+        if (cost[v] <= bc) bst = v;
+        else if (cost[7 - v] <= bc) bst = 7 - v;  // (the other way)
+    }
     return bst;
 }
 
@@ -629,17 +757,25 @@ function autoplay_pad()
     if (timer < 255) timer++;
     if (pl.alive)
     {
-        const em = emergency();
-        if (em != 0xFF)
+        // Every frame while it is dodging, every other frame when all is clear
+        // (it looks 8 frames ahead).
+        if (emSkip) emSkip = false;
+        else
         {
-            // dodge now: no lag, and the plan restarts from the new course
-            move = em;
-            phase = 0;
-            timer = 0;
-            const out = pad | dirPad[em];
-            queue[qpos] = out;
-            qpos = (qpos + 1) & 7;
-            return out;
+            const em = emergency();
+            const alert = em != 0xFF;
+            emSkip = !alert;
+            if (alert)
+            {
+                // dodge now: no lag, and the plan restarts from the new course
+                move = em;
+                phase = 0;
+                timer = 0;
+                const out = pad | dirPad[em];
+                queue[qpos] = out;
+                qpos = (qpos + 1) & 7;
+                return out;
+            }
         }
         pad |= dirPad[move];
         const want = wanted();
