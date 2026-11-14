@@ -242,10 +242,34 @@ function updateShots()
         const s = shots[i];
         if (s.type === SH_NONE) continue;
         s.spr = sp;
+        if (s.type === SH_LASER)
+        {
+            // Lasers fly level at a fixed speed: no bounds on y.
+            s.x = s16(s.x + FP(10));
+            const lx = PX(s.x);
+            if (lx > SCREEN_W + 16) { shotGone(s); continue; }
+            const ly = PX(s.y);
+            spr_stage(shotSpr, sp++, lf, lx, ly - 4);
+            // (the rock by turns: the segment is 32 px long)
+            if (!((i ^ frameCount) & 1) && !stageOpen && stage_solid(lx + 28, ly))
+                shot_kill(s, !enemy_iceShot(lx + 28, ly) && (frameCount & 1));
+            continue;
+        }
         if (s.type === SH_MISSILE)
         {
             let sx = PX(s.x);
             let sy = PX(s.y);
+            if ((i ^ frameCount) & 1)
+            {
+                // (the rock every other frame, by turns)
+                if (s.state === 0) { s.x = s16(s.x + s.vx); s.y = s16(s.y + s.vy); }
+                else s.x = s16(s.x + FP(3));
+                sx = PX(s.x);
+                sy = PX(s.y);
+                if (sx > SCREEN_W + 8 || sy > PLAY_H + 8) { shotGone(s); continue; }
+                spr_stage(shotSpr, sp++, missileF[s.state], sx - 4, sy - 4);
+                continue;
+            }
             const wx = cameraX + sx;
             const fl = stage_floorAt(wx);
             if (s.state === 0)
@@ -274,7 +298,7 @@ function updateShots()
                 }
                 else if (nfl < sy - 3)
                 {
-                    shot_kill(s, true);   // hit a wall
+                    shot_kill(s, !enemy_iceShot(sx + 4, sy));   // hit a wall
                     continue;
                 }
                 else s.y = FP(nfl - 3);
@@ -286,8 +310,8 @@ function updateShots()
             continue;
         }
         s.x = s16(s.x + s.vx);
-        s.y = s16(s.y + s.vy);
         const sx = PX(s.x);
+        if (s.vy) s.y = s16(s.y + s.vy);
         const sy = PX(s.y);
         if (sx > SCREEN_W + 16 || sy < -8 || sy > PLAY_H)
         {
@@ -295,11 +319,11 @@ function updateShots()
             continue;
         }
         if (s.type === SH_SHOT) spr_stage(shotSpr, sp++, shotF, sx - 12, sy - 4);
-        else if (s.type === SH_DIAG) spr_stage(shotSpr, sp++, diagF, sx - 4, sy - 4);
-        else spr_stage(shotSpr, sp++, lf, sx, sy - 4);
-        const tipX = s.type === SH_LASER ? sx + 28 : sx + 4;
+        else spr_stage(shotSpr, sp++, diagF, sx - 4, sy - 4);
+        if ((i ^ frameCount) & 1) continue;
+        const tipX = sx + 4;
         if (!stageOpen && stage_solid(tipX, sy))
-            shot_kill(s, s.type !== SH_LASER || (frameCount & 1));
+            shot_kill(s, !enemy_iceShot(tipX, sy));
     }
     shotSprN = sp;
 }
@@ -360,7 +384,7 @@ function player_update()
     if (padHeld & BUTTON_RIGHT) pl.x += sp;
     if (padHeld & BUTTON_UP) { pl.y -= sp; pl.tilt = -1; }
     if (padHeld & BUTTON_DOWN) { pl.y += sp; pl.tilt = 1; }
-    if (pl.x < FP(16)) pl.x = FP(16);
+    if (pl.x < FP(stage_leftLimit())) pl.x = FP(stage_leftLimit());
     if (pl.x > FP(SCREEN_W - 24)) pl.x = FP(SCREEN_W - 24);
     if (pl.y < FP(8)) pl.y = FP(8);
     if (pl.y > FP(playBottom)) pl.y = FP(playBottom);

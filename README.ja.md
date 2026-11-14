@@ -51,14 +51,14 @@ English: [README.md](README.md)
 
 ## ステージ
 
-| # | ステージ | ボス |
-|---|---|---|
-| 1 | Basalt Reach | Basalt Warden |
-| 2 | Glacier Veil | Cryo Sentinel |
-| 3 | Hive Nebula | Mother Cell |
-| 4 | Sunken Archive | Abyssal Leviathan |
-| 5 | Iron Citadel | Bastion Core |
-| 6 | Zenith Gate | The Zenith |
+| # | ステージ | 仕掛け | ボス |
+|---|---|---|---|
+| 1 | Basalt Reach | 噴火する火山、洞窟を斜めに下る | Basalt Warden |
+| 2 | Glacier Veil | 凍った湖に積み上がる氷の嵐 | Cryo Sentinel |
+| 3 | Hive Nebula | うねり、画面を横切って揺れる壁 | Mother Cell |
+| 4 | Sunken Archive | 間欠泉を吹き上げる大シャコ貝 | Abyssal Leviathan |
+| 5 | Iron Citadel | 昇降シャフト、レーザーゲート、レール式レーザー砲 | Bastion Core |
+| 6 | Zenith Gate | 囚われた恒星：炎のループとレーザー | The Zenith |
 
 最後のボスを倒すと、難しくなった2周目が始まります。
 
@@ -85,7 +85,7 @@ OPTIONS、MUSIC MODE（全12曲）があります。タイトルを放ってお�
 画面とスプライトを canvas に描き、`js/system.js` がエンジンの機能
 （転送、スクロール、パレットとフェード、入力、保存、フレームの時計）を
 受け持ち、ゲーム本体は `js/` のほかのファイルです。曲は `music/`
-（Opus。使えないブラウザでは MP3）、絵とステージのデータは
-`data/assets.js` にあります。
+（Opus。使えないブラウザでは MP3）、効果音は `music/sfx.js`、絵とステージの
+データは `data/assets.js` にあります。
 
 (C) 2026 Y.ATARASHI

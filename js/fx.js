@@ -66,6 +66,7 @@ function fx_update()
         if (!f.kind) continue;
         f.t = (f.t + 1) & 255;
         f.x = s16(f.x - scrollStep);   // debris stays with the world
+        f.y = s16(f.y - scrollStepY);
         let fr;
         const k = f.t >> 2;
         if (f.kind === 1)
