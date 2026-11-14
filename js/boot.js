@@ -19,6 +19,34 @@ function fit()
     canvas.style.height = ch + 'px';
 }
 window.addEventListener('resize', fit);
+window.addEventListener('orientationchange', () => setTimeout(fit, 100));
+if (window.visualViewport) window.visualViewport.addEventListener('resize', fit);
+
+// iOS Safari ignores user-scalable=no in the viewport tag and zooms in on a
+// pinch or a quick second tap, which leaves the page too big to play. Block
+// those gestures; pointer events (the touch pad) still arrive as before.
+function blockZoom()
+{
+    const opt = { passive: false };
+    const stop = (e) => { e.preventDefault(); };
+    // Safari's own pinch events
+    document.addEventListener('gesturestart', stop, opt);
+    document.addEventListener('gesturechange', stop, opt);
+    document.addEventListener('gestureend', stop, opt);
+    // a second finger down, or any drag, would pinch or scroll the page
+    document.addEventListener('touchstart', (e) => { if (e.touches.length > 1) e.preventDefault(); }, opt);
+    document.addEventListener('touchmove', stop, opt);
+    // double-tap zoom: drop the second of two quick taps, but let the
+    // buttons in the bar keep their click
+    let lastEnd = 0;
+    document.addEventListener('touchend', (e) => {
+        const now = Date.now();
+        if (now - lastEnd < 350 && !(e.target.closest && e.target.closest('button'))) e.preventDefault();
+        lastEnd = now;
+    }, opt);
+    document.addEventListener('dblclick', stop, opt);
+}
+blockZoom();
 
 function decodeAssets()
 {
