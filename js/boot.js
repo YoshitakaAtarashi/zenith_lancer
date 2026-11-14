@@ -36,13 +36,17 @@ function blockZoom()
     // a second finger down, or any drag, would pinch or scroll the page
     document.addEventListener('touchstart', (e) => { if (e.touches.length > 1) e.preventDefault(); }, opt);
     document.addEventListener('touchmove', stop, opt);
-    // double-tap zoom: drop the second of two quick taps, but let the
-    // buttons in the bar keep their click
-    let lastEnd = 0;
+    // double-tap zoom: cancel every touchend, so Safari never sees a tap it
+    // could zoom on (the touch pad and overlay use pointer events and do not
+    // need it). The cancelled tap gives no click, so press the buttons here.
     document.addEventListener('touchend', (e) => {
-        const now = Date.now();
-        if (now - lastEnd < 350 && !(e.target.closest && e.target.closest('button'))) e.preventDefault();
-        lastEnd = now;
+        e.preventDefault();
+        const btn = e.target.closest && e.target.closest('button');
+        if (btn && e.changedTouches.length) {
+            const t = e.changedTouches[0];
+            const r = btn.getBoundingClientRect();
+            if (t.clientX >= r.left && t.clientX <= r.right && t.clientY >= r.top && t.clientY <= r.bottom) btn.click();
+        }
     }, opt);
     document.addEventListener('dblclick', stop, opt);
 }
