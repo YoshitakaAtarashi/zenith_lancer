@@ -41,6 +41,9 @@ function blockZoom()
     // need it). The cancelled tap gives no click, so press the buttons here.
     document.addEventListener('touchend', (e) => {
         e.preventDefault();
+        // (iOS lets the sound start only in a touchend or a click, and the
+        // click is cancelled here: start it now)
+        try { audio_unlock(); } catch (err) { }
         const btn = e.target.closest && e.target.closest('button');
         if (btn && e.changedTouches.length) {
             const t = e.changedTouches[0];
